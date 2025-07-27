@@ -4,6 +4,7 @@ from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.routing import Mount, Route
+from starlette.responses import Response
 import uvicorn
 import psycopg2
 import json
@@ -27,7 +28,9 @@ mcp = FastMCP("pg_mcp_sse")
 
 # PostgreSQL 연결 설정
 def get_db_connection():
-    """PostgreSQL 데이터베이스 연결을 생성합니다."""
+    """
+        PostgreSQL 데이터베이스 연결을 생성합니다.
+    """
     try:
         return psycopg2.connect(
             dbname=DB_NAME,
@@ -43,11 +46,11 @@ def get_db_connection():
 @mcp.tool()
 def search_user_by_name(empname: str) -> str:
     """
-    사용자 이름으로 직원 정보를 조회합니다.
-    Args:
-        empname: 검색할 직원 이름
-    Returns:
-        직원 정보 JSON 문자열 (userid, deptname, empname)
+        사용자 이름으로 직원 정보를 조회합니다.
+        Args:
+            empname: 검색할 직원 이름
+        Returns:
+            직원 정보 JSON 문자열 (userid, deptname, empname)
     """
     if not empname or not empname.strip():
         return json.dumps([{"error": "직원 이름을 입력해주세요."}], ensure_ascii=False, indent=2)
@@ -91,6 +94,19 @@ def search_user_by_name(empname: str) -> str:
         if conn:
             conn.close()
 
+# TypeError가 발생했을 때 호출될 예외 처리기
+async def handle_type_error(request: Request, exc: TypeError) -> Response:
+    """
+        TypeError를 처리하고, 오류 로그 없이 빈 200 OK 응답을 반환합니다.
+    """
+    # 서버 로그에 오류를 남기지 않고, 클라이언트에는 정상 응답처럼 보냅니다.
+    return Response(status_code=200)
+
+# 예외 처리기 딕셔너리
+exception_handlers = {
+    TypeError: handle_type_error
+}
+
 # Starlette 앱 설정
 def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlette:
     """
@@ -108,6 +124,7 @@ def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlett
             Route("/sse", endpoint=handle_sse),
             Mount("/messages/", app=sse.handle_post_message),
         ],
+        exception_handlers=exception_handlers
     )
 
 if __name__ == "__main__":
